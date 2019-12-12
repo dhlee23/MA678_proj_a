@@ -1,0 +1,637 @@
+---
+title: "MA678 Midterm Project"
+subtitle: "Airbnb Analysis"
+author: "Dae Hyun Lee"
+date: "12/2/2019"
+output: 
+  pdf_document:
+      toc: true
+      toc_depth: 2
+header-includes:
+  - \usepackage{float}
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+options(tinytex.verbose = TRUE)
+pacman::p_load("ggplot2","knitr","dplyr","tidyr","tinytex","magrittr","vcd","MASS","lme4")
+library(gridExtra) # For plotting
+library(knitr) # For knitting doc and include graphics function
+library(png) # For grabbing the dimensions of png files
+library(readr)
+library(rstanarm) ### !! this does not work on my R-studio. returns error all the time.
+library("bayesplot")
+library("loo") ### !! Not working.
+################################################
+load("airbnb_data_inside.RData")
+load("tomslee_data_Max.RData")
+################################################
+```
+
+\newpage
+
+<center>
+
+![](kisspng-logo-airbnb-jpeg-brand-vector-graphics-madaz-money-learn-to-day-trade-stocks-penny-stoc-5b92a0f47ddf87.1656733615363361165156.jpg)
+
+</center>
+
+# Abstract
+
+Airbnb, which started its service in 2008, was an unconventional accommodation rental service that focused on allowing travelers to live like locals with the concept of renting my home or my room.  
+
+As one of the travel buffs who love to travel, I use Airbnb a lot even more than Hotel services these days. And, I love that I can experience the traveling area as a resident, not as a tourist, through the Airbnb platform.  
+
+The first and most mentioned, when comparing Airbnb to a hotel is the price. One of the reasons why people prefer Airbnb to a hotel is because it is cheaper. And, I’ve noticed that nicer hotels tend to cost more than average Airbnbs in most cities. However, there were many cases that I found booking a hotel is sometimes even less expensive than renting a house/room through Airbnb.
+
+In many cases, the booking fee set by the host seems unreasonably expensive regarding the condition of the house. Thinking of this made me decide to investigate what are the factors that mostly affect consumers in determining Airbnb.
+
+Also, I compare how the overall Airbnb prices change and differ by time of the year. I initially assume that the overall Airbnb listing prices in Boston would reach the highest in May due to the regional attribute that there are always a lot of people gathering over the graduation period.
+
+\newpage
+
+# 1. Introduction
+
+## 1.1 Overview
+
+Throughout the project, I look for investigating and proving a few research questions and hypotheses, such as "What are the factors that consumers consider the most when deciding where to stay through Airbnb platform." Or "In Massachusetts, the overall Airbnb prices would fluctuate according to the school schedule in Boston and reach their highest point around May when there are many graduation ceremonies."  
+
+The data I use for the project is collected from the site 'Inside Airbnb' http://insideairbnb.com/get-the-data.html, which provides more detailed data than most of the other opensource data websites does, such as Kaggle and Tomslee. However, I also use the data from Tomslee to see the difference in years and to better evaluate the models as comparison.  
+
+For this project, to better evaluate the effect of factors that I intend to investigate, I restrict the region, especially within the area of Boston.  
+
+Below is the data description:
+
+```{r echo=FALSE , message=FALSE, warning=FALSE}
+kable(matrix(names(data_tom), ncol = 4), caption = "List of variables (Tomslee)")
+kable(matrix(names(data_inside), ncol = 4), caption = "List of variables (Inside Airbnb)")
+```
+
+\newpage
+## 1.2 Outline  
+
+The outline of this project report is as follows. 
+First, I display the conclusions of exploratory data analyses and state a specific research question of interest. 
+Next, I describe the methods employed to answer the research questions via statistical models. 
+Last, I interpret the models and discuss the results.  
+
+## Project goals  
+
+1. Test and check the factors that mostly affect consumers in determining Airbnb.  
+
+2. Investigate how the overall Airbnb prices change and differ by month within the year between Oct 2018 and Sep 2019.  
+
+3. Figure out the effect of cleaning fees on other variables, including the price/day.  
+
+### Hypotheses 
+
+1. Airbnb prices in Boston would reach the highest in May.  
+
+2. Airbnb prices in Boston would reach the lowest in December and January.  
+
+\newpage
+# 2. Exploratory Data Analysis
+
+## Figure 2.1
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=7, fig.height=3}
+max.x.2.1 <- 600
+type <- c("Private room", "Entire home/apt","Shared room")
+###################
+# f2.1.tomslee "2015-11-1" ~ "2016-10-18"
+f1.1.t <- data_tom %>% mutate(date = Date) %>% dplyr::filter(price > 0 & price <= max.x.2.1) %>%
+  filter(Date >= "2015-11-1" & Date <= "2016-9-22") %>%
+  filter(room_type %in% c("Private room", "Entire home/apt","Shared room")) %>% 
+   ggplot(aes(price, fill = room_type)) +
+   geom_histogram(binwidth = 28) +
+   theme_classic() +
+   scale_fill_brewer(palette = "PuBuGn") +
+   scale_x_continuous(name ="Price per night in $", breaks = seq(0, max.x.2.1, by = 100)) +
+   scale_y_continuous(name="Count")+
+   ggtitle("Figure 2.1.(tomslee):\n Distribution of the airbnb listings over price\n within Boston region in 2016") +
+   theme(plot.title = element_text(face="bold", size=12),
+         axis.title.y = element_text(face="bold",  size=14),
+         axis.text.y  = element_text(vjust=0.5, size=7),
+         axis.title.x = element_text(face="bold",  size=14),
+         axis.text.x  = element_text(vjust=0.5, size=7)) +
+   theme(plot.title = element_text(hjust = 0.5))  +
+   labs(fill="Type of Airbnb room") + ylim(0, 10000)
+f1.1.t
+```
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=7, fig.height=7}
+summary(data_tom$price)
+```
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=7, fig.height=3}
+####################
+# f2.1.inside "2018-10-11" ~ "2019-09-22"
+f1.1.i <- data_inside %>% mutate(date = Date) %>% dplyr::filter(price > 0 & price <= max.x.2.1) %>%
+  filter(Date >= "2018-11-1" & Date <= "2019-9-22") %>%
+  filter(room_type %in% c("Private room", "Entire home/apt","Shared room")) %>% 
+   ggplot(aes(price, fill = room_type)) +
+   geom_histogram(binwidth = 28) +
+   theme_classic() +
+   scale_fill_brewer(palette = "PuBuGn") +
+   scale_x_continuous(name ="Price per night in $", breaks = seq(0, max.x.2.1, by = 100)) +
+   scale_y_continuous(name="Count")+
+   ggtitle("Figure 2.1.(inside):\n Distribution of the airbnb listings over price\n within Boston region in 2019") +
+   theme(plot.title = element_text(face="bold", size=12),
+         axis.title.y = element_text(face="bold",  size=14),
+         axis.text.y  = element_text(vjust=0.5, size=7),
+         axis.title.x = element_text(face="bold",  size=14),
+         axis.text.x  = element_text(vjust=0.5, size=7)) +
+   theme(plot.title = element_text(hjust = 0.5))  +
+   labs(fill="Type of Airbnb room") + ylim(0, 10000)
+#----------------------
+#gridExtra::grid.arrange(f1.1.t, f1.1.i, nrow = 2)
+f1.1.i
+```
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=7, fig.height=7}
+summary(data_inside$price)
+```
+
+This plot gives the general impression of how Airbnb listings are distributed over the price in the Boston area. 
+From this plot, it is evident that there has been a significant increase in the number of Airbnb listings from 2016 to 2019 in Boston. In 2019, the number of Airbnb listings in Boston has almost doubled from 2016. 
+
+To better have an idea of how the listings are distributed over the price, I restricted the range of the Airbnb listing price from zero to 600 dollars per night. In this way, it was easier to read the trends or the patterns from the plot.
+
+\newpage
+## Figure 2.2
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=7, fig.height=4.5}
+max.x <- 1000
+###################
+# f2.2.inside 2018-10-11 ~ 2019-09-22
+f2.2.i <- data_inside %>% mutate(date = Date) %>% dplyr::filter(price > 0 & price <= max.x) %>% 
+  filter(Date >= "2018-11-1" & Date <= "2019-9-22") %>%
+  group_by(Date) %>%
+  summarize(mean = mean(price, na.rm = TRUE)) %>% ggplot(.) +
+  aes(x = Date, y = mean) +
+  geom_line(size = 1.78, colour = "#cf4446") +
+  ylim(160, 190) +
+  theme_classic() +
+  labs(x = "Month",
+       y = "Average price of Airbnbs",
+       title = "Figure 2.2.(inside):\n Change in the average of Airbnb\n prices over the year \n from Nov. 2018 to Sep. 2019")
+
+####################
+# f2.2.tomslee "2015-11-1" ~ "2016-10-18"
+f2.2.t <- data_tom %>% mutate(date1 = Date) %>% dplyr::filter(price > 0 & price <= max.x) %>%
+  filter(Date >= "2015-11-1" & Date <= "2016-9-22") %>%
+  group_by(date1) %>%
+  summarize(mean = mean(price, na.rm = TRUE)) %>% ggplot(.) +
+  aes(x = date1, y = mean) +
+  geom_line(size = 1.78, colour = "#cf4446") +
+  ylim(160, 190) +
+  theme_classic()+
+  labs(x = "Month",
+       y = "Average price of Airbnbs",
+       title = "Figure 2.2.(tomslee):\n Change in the average of Airbnb\n prices over the year \n from Nov. 2015 to Sep. 2016")
+#----------------------
+# f2.2.t 
+# f2.2.i 
+gridExtra::grid.arrange(f2.2.t, f2.2.i, nrow = 1)
+```
+  
+Figure 2.2.(tomslee) and Figure 2.2.(inside) shows the average of the total Airbnb nightly rate over the two different years in Boston.
+
+The figure 2.2.(tomslee) is the average Airbnb price changing over the year between November 2015 and September 2016.
+Also, the figure 2.2.(inside) is the average price changing from November 2018 to September 2019.
+
+From the plots, the average nightly price for the Airbnb listings in Boston dropped to the lowest point around in January and reached the highest roughly around the month of May and for both years.
+
+Many visitors or tourists visit Boston every year because of its regional attributes of having numerous schools and colleges around it. Since most schools are holding their graduation ceremonies roughly from April to May, Boston is mostly crowded with many tourists, visitors, and locals trying to attend graduation ceremonies for their friends or families.
+As a result, we can see that the price of accommodation such as hotels and Airbnb increases as well.
+
+Also, in the winter, most students, professors, and people who study or work at universities return to their home or travel from vacation time, and most people are expected to leave Boston by December. Therefore, as in the graph above shows, the price of Airbnb reaching the lowest in the month of December within the year seems reasonable.
+
+Lastly, the overall average price has increased from the year between 2015 and 2016 to the year between 2018 and 2019. The overall pattern of rising Airbnb prices in Boston from the previous years can be explained by inflation and its impact on accommodation prices in the United States.
+
+The variable that I used to indicate the timeline of the year for the inside data was stored as 'last_scraped,' which seemed highly reliable to indicate the time-varying prices within the combined datasets that contain redundant Airbnb listings within Boston district. However, for the tomslee datasets, I have manually input the values as the date which were read from the Airbnb website by tomslee.
+
+\newpage
+## Figure 2.3
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=7, fig.height=4.5}
+require(stats)
+max.x.3 <- 1000
+###################
+# f2.2.inside 2018-10-11 ~ 2019-09-22
+# regress price onto cleaning_fee
+
+reg_2.3 <- lm(price ~ cleaning_fee, data = data_inside)
+## Equation of the line
+coeff=coefficients(reg_2.3)
+eq = paste0("Equation for the fitted line is,\n                                       Price = ",
+           round(coeff[1],1)," + ", round(coeff[2],1),"*Cleaning_fee")
+
+## Plot
+f2.3 <- data_inside %>% dplyr::filter(price > 0 & price <= max.x.3) %>% dplyr::filter(!is.na(cleaning_fee)) %>%
+  dplyr::filter(number_of_reviews != 0) %>%
+  ggplot() +
+  aes(x = cleaning_fee, y = price, colour = review_scores_rating, size = number_of_reviews) +
+  geom_point() +
+  scale_color_viridis_c(option = "plasma") +
+  theme_light()
+f2.3 + 
+  labs(x = "'Cleaning fee' set by the host",
+        y = "'Price/night' set by the host",
+        title = "Figure 2.3: The relation between the price per night and the cleaning fee",
+        subtitle = eq) +
+   geom_abline(intercept = 57.54806, slope = 1.99328, color="red", size=0.8) +
+   geom_vline(xintercept=400) +
+   geom_hline(yintercept=854)
+#------------------------------------------------------------------------------------------------------------------
+```
+   
+
+The simple linear regression line fitted to the dataset between the nightly rate and the cleaning fee, which both set by the host, represents that they are positively correlated. According to the regression plot, one unit increase in the cleaning fee would lead to the two-unit increase in the nightly price rate.
+
+The brighter the color of the scatterplots indicates the higher review scores given by the guest. Also, the size of the dots represents the number of reviews that the host received from their guests. 
+
+One of the impressive notions that I had while I was looking at this plot was that most of the listings at the very end of the right lower corner received high review scores for the rating. 
+My initial assumption was that there would be many dishonest Airbnb hosts who deliberately set the price lower and additional fees, such as cleaning fees, relatively high to attract consumers. Therefore, hosts who intentionally set the cleaning fee high compared to the nightly price would receive bad reviews. However, it appears that it would not be the case all the time by looking at the plot. 
+
+Based on the review scores, I assume those Airbnb listings with a cleaning fee set above 400 dollars would probably be the luxurious Airbnb houses. 
+I suppose that the hosts of the previously mentioned listings may have lowered prices and increased costs as part of their marketing plans. Otherwise, they would not have received that much high review scores if the houses were in bad condition.
+
+At the same time, there are some listings that are colored so dark under the regression line that I fitted in red color. Those were the ones that I wanted to see before I planned for this project. 
+If the price per night can represent the general quality or the condition of the house, including the location, popularity, etc., the cleaning fee should increase or decrease according to the nightly rate. 
+For example, if one looks at the darkest colored listing on the plot under the fitted regression line, that listing has 100 dollars for the cleaning fee and about 100 dollars for the nightly rate. In this case, staying just one night would cost more than the double amount of nightly rate, which seems not a reasonable price to me as a potential guest.
+
+Since the total price of a reservation on Airbnb is based on the nightly rate set by the host plus other fees or costs also determined by the host, I assume many of the hosts would willingly set the price/day lower and cleaning fee higher. Because the higher the cleaning fee is, the more the percentage of tax would be imposed on the guests than to the hosts.  
+
+
+## Figure 2.3.1
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=7, fig.height=5}
+f2.3.1 <- data_inside %>% dplyr::filter(price > 0 & price <= max.x.3) %>% dplyr::filter(!is.na(cleaning_fee)) %>%
+  dplyr::filter(number_of_reviews != 0) %>%
+  dplyr::filter(review_scores_rating < 80) %>%
+  ggplot() +
+  aes(x = cleaning_fee, y = price, colour = review_scores_rating, size = number_of_reviews) +
+  geom_point() +
+  scale_color_viridis_c(option = "heat") +
+  theme_light()
+f2.3.1 + 
+  labs(x = "'Cleaning fee' set by the host",
+        y = "'Price/night' set by the host",
+        title = "Figure 2.3.1: price per night over the cleaning fee",
+        subtitle = "Scores below 80") +
+   geom_abline(intercept = 57.54806, slope = 1.99328, color="red", size=0.8) +
+   geom_vline(xintercept=400) +
+   geom_hline(yintercept=854)
+```
+
+Figure 2.3.1 shows the Airbnb listings, which received review ratings below the score of 85. From this plot, I was able to see that the listings with a comparatively large number of reviews appear to have higher review scores.
+
+Receiving zero for the review score is such an extreme case. Thereby, I intentionally deleted the listings which received zero for the review ratings.
+
+
+\newpage
+## Figure 2.4
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=7, fig.height=4}
+## the number of reviews over the review score
+f2.4 <- data_inside %>% dplyr::filter(price > 0 & price <= max.x.3) %>% mutate(total_price = price + cleaning_fee) %>%
+  #dplyr::filter(!is.na(cleaning_fee)) %>% 
+  dplyr::filter(number_of_reviews != 0) %>% 
+  dplyr::filter(review_scores_rating < 101) %>%
+  ggplot() +
+  aes(x = number_of_reviews, y = review_scores_rating, colour = total_price) +
+  geom_point() +
+  scale_color_viridis_c(option = "inferno") +
+  theme_light()
+f2.4 + 
+  labs(y = "Review Score", x = "The number of reviews",
+        color = "Nightly rate plus\n cleaning fee",
+        title = "Figure 2.4: The relation between the number of reviews and the review scores",
+        subtitle = "") +
+   ylim(20, 100) + xlim(0, 200)
+```
+
+Figure 2.4 shows the relationship between the number of reviews and the review score ratings. Similar to the result from the figure 2.4, individual listings appear to have a positive relationship with the number of reviews. 
+
+
+## Figure 2.5
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=7, fig.height=3}
+## review scores over cleaning fee
+f2.5.1 <- data_inside %>% dplyr::filter(price > 0 & price <= max.x.3) %>% 
+  dplyr::filter(!is.na(cleaning_fee)) %>% dplyr::filter(!is.na(review_scores_rating))%>%
+  #dplyr::filter(number_of_reviews != 0) %>%
+  #dplyr::filter(review_scores_rating < 80) %>%
+  ggplot() +
+  aes(x = cleaning_fee, y = (review_scores_rating)) +
+  geom_point() +
+  theme_light()+
+  labs(x = "Cleaning fee set by the host",
+        y = "Review scores give by the guest",
+        title = "Figure 2.5: Review scores over cleaning fee",
+        subtitle = "") +
+   ylim(0, 100) + xlim(0, 200)
+
+## review scores over cleaning fee
+f2.5.2 <- data_inside %>% dplyr::filter(price > 0 & price <= max.x.3) %>% 
+  dplyr::filter(!is.na(cleaning_fee)) %>% dplyr::filter(!is.na(review_scores_rating))%>%
+  #dplyr::filter(number_of_reviews != 0) %>%
+  dplyr::filter(cleaning_fee > 200) %>%
+  ggplot() +
+  aes(x = cleaning_fee, y = (review_scores_rating)) +
+  geom_point() +
+  theme_light()+
+  labs(x = "Cleaning fee set by the host",
+        y = "Review scores given by the guest",
+        title = "Figure 2.5: Review scores over cleaning fee",
+        subtitle = "") +
+   ylim(0, 100) + xlim(200, 400)
+
+gridExtra::grid.arrange(f2.5.1, f2.5.2, nrow = 1)
+```
+
+Lastly, figure 2.5 shows that there is not any clear patterns or the relationship between the cleaning fee and the review scores within the range of cleaning fee between zero to 200 dollars.
+
+
+\newpage
+# 3. Methods
+
+I had initially decided to use Boston Airbnb open data from Kaggle, multiple regional Airbnb data from Tom Slee. 
+
+However, one of the problems that I found from those datasets is that the price for the individual Airbnb house/room is not explicitly indicated. 
+It was not clear if the Airbnb price in the datasets is whether the total booking price set by the host, including the fee for the cleaning and service all together. I believed that it might not be reliable to make careful analyses or predictions based on the price listed in the previous datasets. 
+ 
+The data I found from the website called 'Inside Airbnb' has a variable that holds the price of the cleaning fee set by the host for each Airbnb listings.
+And, the data contains much more observations than the ones from Tom Slee. 
+
+For both data from Inside Airbnb and Tom Slee, I created a variable holding the value as a date of indicating when the data was scraped from the Airbnb Website. 
+
+Since most of the information in Inside Airbnb datasets were stored as a factor level, I had to make significant adjustments to the datasets. 
+For example, the value of the price is even stored as a factor level with '\$' sign as well as ',' sign in between the numbers as '$100,231.00'. 
+
+The cleaning and wrangling process that I had conducted for both Tom Slee and Inside Airbnb datasets is separated from this project Rmd file and saved in other files. Due to the amount of the work that I had made for just cleaning and wrangling, I decided to separate the part of the cleaning process from this analysis file. 
+
+The method of data cleaning and wrangling for Tom Slee datasets is in the file named 'tomslee_data_cleaning' as well as that of data cleaning for Inside Airbnb datasets is in the file 'insideairbnb_data_cleaning.R.'
+
+
+\newpage
+# 4. Models
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+## Create filtered data for building models
+#--------------------------------------------------------------------------------------------------------------
+dat_inside <- data_inside %>% dplyr::filter(price > 0 & price <= max.x.3) %>% 
+  dplyr::filter(room_type %in% c("Private room", "Entire home/apt","Shared room")) %>%
+  dplyr::filter(!is.na(cleaning_fee)) %>% 
+  dplyr::filter(cleaning_fee > 0) %>% 
+  dplyr::filter(!is.na(review_scores_rating)) %>% 
+  dplyr::filter(!is.na(host_has_profile_pic)) %>%
+  dplyr::filter(!is.na(host_identity_verified)) %>%
+  dplyr::filter(!is.na(accommodates)) %>%
+  dplyr::filter(!is.na(bedrooms)) %>%
+  dplyr::filter(!is.na(bathrooms)) %>%
+  dplyr::filter(!is.na(beds)) %>%
+  mutate(cancellation_policy_m = ifelse(cancellation_policy == "moderate",1,
+                                 ifelse(cancellation_policy == "strict", 2,
+                                 ifelse(cancellation_policy == "strict_14_with_grace_period", 3,
+                                 ifelse(cancellation_policy == "super_strict_30", 4,
+                                ifelse(cancellation_policy == "super_strict_60", 5, 0)))))) %>%
+  mutate(cancellation_policy_m = factor(cancellation_policy_m)) %>%
+  mutate(host_response_time_m = ifelse(host_response_time == "within an hour", 1,
+                                ifelse(host_response_time == "within a few hours", 2,
+                                ifelse(host_response_time == "within a day", 3,
+                                ifelse(host_response_time == "a few days or more", 4, 0))))) %>%
+  mutate(combined_price = price + cleaning_fee)
+  
+#--------------------------------------------------------------------------------------------------------------
+```
+
+## Model 1
+
+### What are the factors that mostly effect consumers in determining Airbnb.
+
+#### Review scores the for Airbnb listings in Boston will be higher if the cleaning fee is high and the nightly rate is low.
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+fit1_lm <- lm(review_scores_rating ~ number_of_reviews +
+                cleaning_fee + price + 
+                instant_bookable +
+                review_scores_accuracy + review_scores_cleanliness + review_scores_checkin +
+                review_scores_communication + review_scores_location + review_scores_value, 
+            data = dat_inside)
+summary(fit1_lm)
+```
+
+* number of reviews: On average review score for the Airbnb listing decrease by 0.002 with every one more review on the listing.
+* cleaning fee: one unit increase in the cleaning fee will lead to 0.005 increase in the review score.
+* price: an increase in the price will have a significantly small amount of positive effect on the review score.
+* instant bookable: instant bookable has a negative effect on the review score.
+* review scores for six categories: increase in all the review scores for six categories will have a positive effective on the overall review scores.
+
+As a result, both cleaning fee and price does not have much effect on the review scores unlike what I expected from the EDA. Also, the higher number of reviews does not necessarily increase the review scores. Moreover, the relationship between the cleaning fee set by the host is more likely to effect review scores in a positive way.
+
+\newpage
+## Model 2
+
+### What are the factors that can predict the nightly rate of the Airbnb listings in Boston. 
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+fit2_lmer_price <- lmer(price ~ review_scores_rating + accommodates + bedrooms + number_of_reviews + reviews_per_month +
+                       (1 + Date) + (1 | room_type),
+                      data=dat_inside)
+
+summary(fit2_lmer_price)
+
+confint(fit2_lmer_price)
+```
+
+Random effect is significant since none of the confidence interval crosses zero.
+
+\newpage
+## Model 3
+
+#### The likelihood of booking Airbnb would reach the highest in the month of May.
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+## Check the overall distribution of the reviews per month among Airbnb listings within Boston area.
+summary(data_inside$reviews_per_month)
+## Mean number of reviews is 2.014
+## and, 3rd Quartie value is 3.100
+## Create another variable which contains 1 if the individual listing receives more than the third quartile number of reviews per month.
+## Treat them as popular among the guests if they receives more than 3.210 number of reviews per month.
+dat_m2 <- dat_inside %>% filter(!is.na(reviews_per_month)) %>% mutate(popularity = ifelse(reviews_per_month > 3.210, 1, 0))
+ 
+## fit logistic regression model.
+fit2_logi <- glm(popularity ~ factor(Date),
+            data=dat_m2)
+## fit logistic regression in multilevel
+fit2_logi_ml <- glmer(popularity ~ factor(Date) + (1|Date),
+            data=dat_m2)
+fit2_logi_ml2 <- glmer(popularity ~ factor(Date) + (1|id),
+            data=dat_m2)
+fit2_logi_ml3 <- glmer(popularity ~ factor(Date) + (1|neighbourhood_cleansed),
+            data=dat_m2)
+
+summary(fit2_logi)
+```
+
+The probability of making reviews greater than the third qualtile value from its distribution during the specific month for Airbnb listings in Boston is,  
+
+$Pr(popularity = 1) = logit^{-1}(0.273322 + 0.004834*Nov. + 0.030202*Dec. - 0.037350*Jan. - 0.037350*Feb. - 0.047241*Mar. - 0.046530*Apr. - 0.041582*May. - 0.025325*Jun. - 0.017756*Jul. - 0.008678*Aug. - 0.019119*Sep.)$.
+
+The regression coefficient for making reviews in April is `r round(coef(fit2_logi)[7],4)`, which indicates that the month of April has a multiplicative effect of $e^{-0.046530}$ = `r round(exp(coef(fit2_logi)[7]),4)` on the odds of booking 'Airbnb' compared to other months over the year in Boston.
+
+The regression coefficient for making reviews in May is `r round(coef(fit2_logi)[8],4)`, which indicates that the month of May has a multiplicative effect of $e^{-0.041582}$ = `r round(exp(coef(fit2_logi)[8]),4)` on the odds of booking 'Airbnb' compared to other months over the year in Boston.
+
+To quickly interpret the coefficient for April on probability scale, I divide the coefficient estimate for April by four: $\frac{0.046530}{4} = 0.0116325$.
+
+To quickly interpret the coefficient for May on probability scale, I divide the coefficient estimate for May by four: $\frac{0.041582}{4} = 0.0103955$.
+
+Thus, in April, people are 1.2% more likely to book Airbnbs in Boston and make reviews. Also, in May, people are 1.03% more likely to book Airbnbs in Boston and make reviews. 
+
+To test the popularity of Airbnb listings in Boston, I dichotomized the values in the variable 'review per month' either as 1 or 0 depending on the number of reviews the listing has received within the month.
+ 
+Created another variable which contains 1 and if the listing received greater number of comments or reviews than the third quartile value of its distribution. For example, if the number of reviews per month exceeds the value of 3.1 than I gave 1 for that Airbnb listing.
+
+Since there were not any variables holding the information of any number of times that each listings were booked within the month, I thought it could be reasonable to rely on the 'review per month' variable to see the popularity of Airbnb booking in Boston Area. 
+Because the customers must have stayed from the listed houses/rooms in order to make any reviews or to see the reviews made by the host to the guest who stayed. 
+
+Based on the regression results, I have a moderate evidence that the number of booking Airbnb, as well as leaving reviews, would reach the highest in April or in May, especially in Boston. 
+
+Therefore, I would like to conclude that the model also supports the hypothesis that Airbnb prices in Boston would reach the highest around in May and drop to the lowest around December or January.
+
+# 5. Conclusions
+
+This project entailed testing a set of hypotheses pertaining to the effect that a particular set of factors had on the Airbnb prices and reviews. 
+
+I took the approach of first cleaning and manipulating the data so as to facilitate its use with visualization techniques that would, then, go on to serve as a prelude to model fitting. Performing analysis on each of the hypotheses resulted in some hypothesis being moderately supported by the data.
+
+In summary, I can only infer that the regional attributes of Boston within the scope of the provided hypotheses do affect the price of Airbnb listings.
+
+
+\newpage
+
+# Appendix
+
+## Additional figures for EDA
+
+#### Summary of Reg_2.3
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+## Simple Linear Regression for the figure 2.3
+summary(reg_2.3)
+```
+
+Summary of the Linear Regression fitted to test the relationship between the price and the cleaning fee.
+
+
+#### Figure 2.3.2
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+## listings that does not have any reveiws
+f2 <- data_inside %>% dplyr::filter(price > 0 & price <= max.x.3) %>% dplyr::filter(!is.na(cleaning_fee)) %>%
+  dplyr::filter(number_of_reviews == 0) %>%
+  ggplot() +
+  aes(x = cleaning_fee, y = price, colour = review_scores_rating, size = number_of_reviews) +
+  geom_point() +
+  scale_color_viridis_c(option = "plasma") +
+  theme_light()
+f2 + 
+  labs(x = "'Cleaning fee' set by the host",
+        y = "'Price/night' set by the host",
+        title = "Figure 2.3: Listings that did not get any reviews",
+        subtitle = eq) +
+   geom_abline(intercept = 57.54806, slope = 1.99328, color="red", size=0.8) +
+   geom_vline(xintercept=400) +
+   geom_hline(yintercept=854)
+```
+
+There are many listings that does not have any reviews. 
+
+#### Figure.A
+```{r  echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+ #total number of Airbnb listings over the neighbourhoods in Boston.
+ max.x <- 1000
+ theTable <- within(data_inside, neighbourhood <- factor(neighbourhood_cleansed, levels=names(sort(table(neighbourhood_cleansed),
+                                                                                       decreasing=TRUE))))
+ fig3_nei <- theTable %>% dplyr::filter(price > 0 & price <= max.x) %>% dplyr::filter(!is.na(number_of_reviews)) %>% 
+   ggplot() +
+   aes(x = neighbourhood) +
+   geom_bar(fill = "#758bd1") +
+   theme_classic()
+ 
+ fig3_nei + theme(axis.text.x = element_text(face="bold",size=6, angle=45),
+         axis.text.y = element_text(face="bold", color="#993333",size=10, angle=1))
+```
+
+It is clear to see the overall number of listings around Boston Area.
+
+
+#### Figure.B
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+ fig3_rev <- theTable %>% dplyr::filter(price > 0 & price <= max.x) %>% dplyr::filter(!is.na(number_of_reviews)) %>%
+   ggplot() +
+   aes(x = neighbourhood_cleansed, y = number_of_reviews) +
+   geom_col(fill = "#0c4c8a") +
+   theme_classic() +
+   labs(x = "Neighbourhoods in Boston area",
+        y = "Frequency",
+        title = "Figure: Total number of reviews for the listings within the district")
+ fig3_rev + theme(axis.text.x = element_text(face="bold",size=6, angle=45),
+         axis.text.y = element_text(face="bold", color="#993333",size=10, angle=1))
+```
+
+It shows the total number of reviews over the neighbourhoods in Boston. It was useful to see which districts of the Boston area are typically famous to stay among the Airbnb users.
+
+
+## Model Checking
+
+#### Model 1
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=3, fig.height=3}
+plot(fit1_lm, ncol = 1)
+```
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+##car::marginalModelPlots(fit1)
+summary(step(fit1_lm))
+```
+
+#### Model 1 - Multilevel
+
+Multilevel linear model for the model.1
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+fit1_lmer <- lmer(review_scores_rating ~ number_of_reviews + 
+                cleaning_fee + price  + Date +
+                instant_bookable +
+                review_scores_accuracy +review_scores_cleanliness+review_scores_checkin +
+                review_scores_communication+review_scores_location+review_scores_value +
+                (1|room_type), 
+            data = dat_inside)
+summary(fit1_lmer)
+```
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+plot(fitted(fit1_lmer), resid(fit1_lmer), ncol=1)
+```
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+plot(ranef(fit1_lmer), ncol=1)
+```
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+residual = dat_inside$review_scores_rating - fitted(fit1_lmer)
+plot(residual, ncol = 1)
+```
+
+#### Model 2
+
+#### Model 3
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+kable(confint(fit2_logi))
+```
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+residual = dat_m2$popularity - fitted(fit2_logi)
+plot(residual, ncol = 1)
+```
+
+```{r echo=FALSE,message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+plot(fitted(fit2_logi),residuals(fit2_logi), ncol = 1)
+```
+
